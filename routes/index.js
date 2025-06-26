@@ -1,14 +1,29 @@
 import express from 'express';
 import AppController from '../controllers/AppController';
+import UsersController from '../controllers/UsersController';
+import AuthController from '../controllers/AuthController';
+import FilesController from '../controllers/FilesController';
 
-// Create a new router object
 const router = express.Router();
 
-// Define the route for GET /status and map it to the AppController.getStatus function
+// General status and stats (Task 2)
 router.get('/status', AppController.getStatus);
-
-// Define the route for GET /stats and map it to the AppController.getStats function
 router.get('/stats', AppController.getStats);
 
-// Export the router so it can be used in server.js
+// User endpoints (Tasks 3, 4, 11)
+router.post('/users', UsersController.postNew);
+router.get('/users/me', UsersController.getMe);
+
+// Auth endpoints (Task 4)
+router.get('/connect', AuthController.getConnect);
+router.get('/disconnect', AuthController.getDisconnect);
+
+// File endpoints (Tasks 5, 6, 7, 8, 9)
+router.post('/files', FilesController.postUpload);
+router.get('/files/:id', FilesController.getShow);
+router.get('/files', FilesController.getIndex);
+router.put('/files/:id/publish', FilesController.putPublish);
+router.put('/files/:id/unpublish', FilesController.putUnpublish);
+router.get('/files/:id/data', FilesController.getFile);
+
 export default router;
