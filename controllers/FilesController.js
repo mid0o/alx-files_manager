@@ -10,6 +10,7 @@ import redisClient from '../utils/redis';
 const fileQueue = new Bull('fileQueue');
 
 class FilesController {
+  // Helper to get user from token
   static async getAuthenticatedUser(request) {
     const token = request.headers['x-token'];
     if (!token) return null;
@@ -30,6 +31,10 @@ class FilesController {
 
     const files = dbClient.db.collection('files');
     if (parentId !== '0' && parentId !== 0) {
+      // ** FIX: Validate parentId format **
+      if (!ObjectId.isValid(parentId)) {
+        return response.status(400).json({ error: 'Parent not found' });
+      }
       const parentFile = await files.findOne({ _id: new ObjectId(parentId) });
       if (!parentFile) return response.status(400).json({ error: 'Parent not found' });
       if (parentFile.type !== 'folder') return response.status(400).json({ error: 'Parent is not a folder' });
@@ -70,8 +75,14 @@ class FilesController {
     const user = await FilesController.getAuthenticatedUser(request);
     if (!user) return response.status(401).json({ error: 'Unauthorized' });
 
+    // ** FIX: Validate fileId format **
+    const fileId = request.params.id;
+    if (!ObjectId.isValid(fileId)) {
+        return response.status(404).json({ error: 'Not found' });
+    }
+
     const file = await dbClient.db.collection('files').findOne({
-      _id: new ObjectId(request.params.id),
+      _id: new ObjectId(fileId),
       userId: user._id,
     });
     if (!file) return response.status(404).json({ error: 'Not found' });
@@ -88,18 +99,27 @@ class FilesController {
     const parentId = request.query.parentId || '0';
     const page = parseInt(request.query.page, 10) || 0;
 
-    const pipeline = [
-      { $match: { userId: user._id, parentId: parentId === '0' ? 0 : new ObjectId(parentId) } },
+    // ** FIX: Validate parentId format if it's not the root **
+    if (parentId !== '0' && parentId !== 0 && !ObjectId.isValid(parentId)) {
+        return response.status(200).json([]); // Return empty list for invalid parentId
+    }
+
+    const query = {
+        userId: user._id,
+        parentId: parentId === '0' ? 0 : new ObjectId(parentId)
+    };
+
+    const files = await dbClient.db.collection('files').aggregate([
+      { $match: query },
       { $sort: { _id: 1 } },
       { $skip: page * 20 },
       { $limit: 20 },
-    ];
-    const files = await dbClient.db.collection('files').aggregate(pipeline).toArray();
-    
+      { $project: { localPath: 0 } }
+    ]).toArray();
+
     return response.status(200).json(files.map(f => {
       const doc = { id: f._id, ...f };
       delete doc._id;
-      delete doc.localPath;
       return doc;
     }));
   }
@@ -108,8 +128,14 @@ class FilesController {
     const user = await FilesController.getAuthenticatedUser(request);
     if (!user) return response.status(401).json({ error: 'Unauthorized' });
 
+    // ** FIX: Validate fileId format **
+    const fileId = request.params.id;
+    if (!ObjectId.isValid(fileId)) {
+        return response.status(404).json({ error: 'Not found' });
+    }
+
     const { value: file } = await dbClient.db.collection('files').findOneAndUpdate(
-      { _id: new ObjectId(request.params.id), userId: user._id },
+      { _id: new ObjectId(fileId), userId: user._id },
       { $set: { isPublic } },
       { returnDocument: 'after' },
     );
@@ -130,7 +156,15 @@ class FilesController {
   }
 
   static async getFile(request, response) {
-    const file = await dbClient.db.collection('files').findOne({ _id: new ObjectId(request.params.id) });
+    const fileId = request.params.id;
+    const { size } = request.query;
+
+    // ** FIX: Validate fileId format **
+    if (!ObjectId.isValid(fileId)) {
+        return response.status(404).json({ error: 'Not found' });
+    }
+
+    const file = await dbClient.db.collection('files').findOne({ _id: new ObjectId(fileId) });
     if (!file) return response.status(404).json({ error: 'Not found' });
 
     if (!file.isPublic) {
@@ -142,7 +176,13 @@ class FilesController {
     if (file.type === 'folder') return response.status(400).json({ error: "A folder doesn't have content" });
     
     let filePath = file.localPath;
-    if (request.query.size) filePath = `${filePath}_${request.query.size}`;
+    if (size) {
+        const validSizes = ['500', '250', '100'];
+        if (!validSizes.includes(size)) {
+            return response.status(400).json({ error: 'Invalid size parameter' });
+        }
+        filePath = `${filePath}_${size}`;
+    }
     
     if (!fs.existsSync(filePath)) return response.status(404).json({ error: 'Not found' });
 
