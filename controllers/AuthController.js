@@ -5,6 +5,10 @@ import redisClient from '../utils/redis';
 
 class AuthController {
   static async getConnect(request, response) {
+    // ** FIX: Add DB connection check **
+    if (!dbClient.isAlive()) {
+      return response.status(500).json({ error: 'Database connection failed' });
+    }
     const authHeader = request.headers.authorization || '';
     if (!authHeader.startsWith('Basic ')) {
       return response.status(401).json({ error: 'Unauthorized' });
