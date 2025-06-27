@@ -4,14 +4,11 @@ import Bull from 'bull';
 import dbClient from '../utils/db';
 import redisClient from '../utils/redis';
 
+// For Task 11: Queue for sending welcome emails
 const userQueue = new Bull('userQueue');
 
 class UsersController {
   static async postNew(request, response) {
-    // ** FIX: Add DB connection check **
-    if (!dbClient.isAlive()) {
-      return response.status(500).json({ error: 'Database connection failed' });
-    }
     const { email, password } = request.body;
 
     if (!email) return response.status(400).json({ error: 'Missing email' });
@@ -27,16 +24,13 @@ class UsersController {
       password: hashedPassword,
     });
 
+    // Add job to the user queue for the welcome email
     await userQueue.add({ userId: result.insertedId.toString() });
 
     return response.status(201).json({ id: result.insertedId, email });
   }
 
   static async getMe(request, response) {
-    // ** FIX: Add DB connection check **
-    if (!dbClient.isAlive()) {
-      return response.status(500).json({ error: 'Database connection failed' });
-    }
     const token = request.headers['x-token'];
     if (!token) return response.status(401).json({ error: 'Unauthorized' });
 
